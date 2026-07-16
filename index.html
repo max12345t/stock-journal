@@ -693,20 +693,10 @@ tr:hover .row-actions{opacity:1;}
         <div class="mt-16 card">
           <div class="card-header">
             <div class="card-title"><i class="fa fa-cloud" style="color:var(--accent2)"></i> 雲端同步（跨裝置）</div>
-            <div class="card-sub" id="cloudStatusBadge">未設定</div>
+            <div class="card-sub" id="cloudStatusBadge">連接中...</div>
           </div>
-          <div id="cloudSetupBlock">
-            <div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:14px;">
-              第一次設定：到 <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a> 建立一個免費專案 → 新增「Web App」→ 把設定物件貼在下面。<br>
-              另外要記得在 Firebase 專案裡開啟 <b>Authentication → Email/Password</b> 登入方式，以及建立 <b>Firestore Database</b>。
-            </div>
-            <div class="form-group">
-              <label class="form-label">Firebase 設定物件（貼上整段 firebaseConfig JSON）</label>
-              <textarea class="form-input" id="fbConfigInput" rows="5" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}' style="font-family:monospace;font-size:12px;"></textarea>
-            </div>
-            <button class="btn btn-primary" onclick="saveFirebaseConfig()"><i class="fa fa-plug"></i> 連接雲端</button>
-          </div>
-          <div id="cloudAuthBlock" style="display:none;margin-top:14px;">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">用 Email 註冊一個帳號並登入，之後在別的裝置/別人的電腦打開這個網站，用同一組帳密登入就能看到同一份資料（每個帳號的資料互不相通）。</div>
+          <div id="cloudAuthBlock" style="display:none;">
             <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
               <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="cloudEmail" placeholder="you@example.com"></div>
               <div class="form-group"><label class="form-label">密碼</label><input class="form-input" type="password" id="cloudPassword" placeholder="至少 6 碼"></div>
@@ -714,7 +704,6 @@ tr:hover .row-actions{opacity:1;}
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
               <button class="btn btn-primary" onclick="cloudSignUp()"><i class="fa fa-user-plus"></i> 註冊新帳號</button>
               <button class="btn btn-success" onclick="cloudSignIn()"><i class="fa fa-right-to-bracket"></i> 登入</button>
-              <button class="btn" onclick="resetFirebaseConfig()"><i class="fa fa-rotate-left"></i> 重設雲端設定</button>
             </div>
           </div>
           <div id="cloudSyncedBlock" style="display:none;margin-top:14px;">
@@ -726,6 +715,19 @@ tr:hover .row-actions{opacity:1;}
             </div>
             <div style="font-size:11.5px;color:var(--text3);margin-top:10px;">每次儲存交易記錄時會自動同步到雲端；在其他裝置登入同一個帳號即可看到相同資料。</div>
           </div>
+          <details style="margin-top:14px;">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text3);">進階：換成自己的 Firebase 專案</summary>
+            <div style="margin-top:10px;">
+              <div class="form-group">
+                <label class="form-label">Firebase 設定物件（貼上整段 firebaseConfig）</label>
+                <textarea class="form-input" id="fbConfigInput" rows="4" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}' style="font-family:monospace;font-size:12px;"></textarea>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="saveFirebaseConfig()"><i class="fa fa-plug"></i> 套用新設定</button>
+                <button class="btn" onclick="resetFirebaseConfig()"><i class="fa fa-rotate-left"></i> 改回預設設定</button>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -1083,33 +1085,39 @@ function saveDB() {
 }
 
 // ========== CLOUD SYNC (Firebase) ==========
+// 內建預設設定，分享給別人用時不用重新輸入；如果要換成別的 Firebase 專案，
+// 可以在「設定 → 雲端同步」貼上新的設定物件覆蓋它。
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCl7QTlG5h8iHgEWmFv92_XBF3wfgerPh8",
+  authDomain: "stock-2bcfd.firebaseapp.com",
+  projectId: "stock-2bcfd",
+  storageBucket: "stock-2bcfd.firebasestorage.app",
+  messagingSenderId: "381394996686",
+  appId: "1:381394996686:web:35f2047e1af9cee2156f9f"
+};
 let fbApp = null, fbAuth = null, fbDb = null, cloudUser = null;
 let cloudSyncTimer = null, isPullingFromCloud = false;
 
 function loadFirebaseConfig() {
   const raw = localStorage.getItem('tradelens_fb_config');
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  if (raw) { try { return JSON.parse(raw); } catch {} }
+  return DEFAULT_FIREBASE_CONFIG;
 }
 
 function updateCloudUI(state) {
   const badge = document.getElementById('cloudStatusBadge');
   if (!badge) return;
-  const setup = document.getElementById('cloudSetupBlock');
   const auth = document.getElementById('cloudAuthBlock');
   const synced = document.getElementById('cloudSyncedBlock');
-  if (state === 'none') {
-    badge.textContent = '未設定'; setup.style.display = ''; auth.style.display = 'none'; synced.style.display = 'none';
-  } else if (state === 'needAuth') {
-    badge.textContent = '已連接，尚未登入'; setup.style.display = 'none'; auth.style.display = ''; synced.style.display = 'none';
+  if (state === 'needAuth') {
+    badge.textContent = '尚未登入'; auth.style.display = ''; synced.style.display = 'none';
   } else if (state === 'synced') {
-    badge.textContent = '☁️ 雲端同步中'; setup.style.display = 'none'; auth.style.display = 'none'; synced.style.display = '';
+    badge.textContent = '☁️ 雲端同步中'; auth.style.display = 'none'; synced.style.display = '';
   }
 }
 
 function initFirebaseFromStorage() {
   const cfg = loadFirebaseConfig();
-  if (!cfg) { updateCloudUI('none'); return; }
   try {
     fbApp = firebase.initializeApp(cfg);
     fbAuth = firebase.auth();
@@ -1129,31 +1137,49 @@ function initFirebaseFromStorage() {
     });
   } catch (e) {
     console.error('Firebase 初始化失敗', e);
-    notify('Firebase 設定有誤，請檢查貼上的設定物件', 'error');
+    notify('雲端連線失敗，請確認網路連線', 'error');
   }
 }
 
+function parseFirebaseConfigText(raw) {
+  let txt = raw.trim();
+  // 去掉像 "const firebaseConfig = " / "var firebaseConfig=" / "export default" 這類前綴
+  txt = txt.replace(/^\s*(const|let|var)\s+\w+\s*=\s*/, '');
+  txt = txt.replace(/^\s*export\s+default\s*/, '');
+  // 只取第一個 { 到最後一個 } 之間的內容（去掉前後多餘文字、結尾分號）
+  const first = txt.indexOf('{');
+  const last = txt.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) txt = txt.slice(first, last + 1);
+  // 先試著當標準 JSON 解析
+  try { return JSON.parse(txt); } catch (e) {}
+  // 再試著當一般 JS 物件字面量解析（key 沒加引號的情況，例如從 Firebase 主控台複製的程式碼）
+  // 這裡的內容是使用者自己貼的設定物件，不含任何外部輸入，安全性等同一般前端程式碼執行
+  return Function('"use strict"; return (' + txt + ');')();
+}
+
 function saveFirebaseConfig() {
-  const txt = document.getElementById('fbConfigInput').value.trim();
-  if (!txt) { notify('請貼上 Firebase 設定物件', 'error'); return; }
+  const raw = document.getElementById('fbConfigInput').value.trim();
+  if (!raw) { notify('請貼上 Firebase 設定物件', 'error'); return; }
   try {
-    const cfg = JSON.parse(txt);
+    const cfg = parseFirebaseConfigText(raw);
+    if (!cfg || !cfg.apiKey || !cfg.projectId) throw new Error('缺少 apiKey 或 projectId');
     localStorage.setItem('tradelens_fb_config', JSON.stringify(cfg));
     notify('雲端設定已儲存，正在連接...', 'success');
     initFirebaseFromStorage();
   } catch (e) {
-    notify('設定物件格式錯誤，請確認是否為合法 JSON', 'error');
+    console.error(e);
+    notify('設定物件格式錯誤，請確認貼上的內容完整（需包含 apiKey、projectId 等欄位）', 'error');
   }
 }
 
 function resetFirebaseConfig() {
-  if (!confirm('確定要清除雲端設定並登出嗎？本機資料不會被刪除。')) return;
+  if (!confirm('確定要清除自訂雲端設定，改回預設帳號空間嗎？本機資料不會被刪除。')) return;
   if (fbAuth) fbAuth.signOut();
   localStorage.removeItem('tradelens_fb_config');
   localStorage.removeItem('tradelens_last_cloud_sync');
   fbApp = null; fbAuth = null; fbDb = null; cloudUser = null;
-  updateCloudUI('none');
-  notify('雲端設定已重設', 'success');
+  notify('已改回預設雲端設定', 'success');
+  initFirebaseFromStorage();
 }
 
 function cloudSignUp() {
